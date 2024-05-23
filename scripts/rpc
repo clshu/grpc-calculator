@@ -1,0 +1,4 @@
+#!/bin/zsh
+grpcurl -plaintext -proto ./proto/calculator.proto \
+-d '{"a": 2, "b": 3}' \
+'[::1]:50051' calculator.Calculator.Add
