@@ -1,0 +1,2 @@
+#!/bin/zsh
+grpcurl -H "Authorization: Bearer some-secret-token" -emit-defaults -plaintext '[::1]:50051' calculator.Admin.GetRequestCount

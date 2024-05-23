@@ -1,9 +1,12 @@
-// use proto::admin_server::Admin;
+// use admin_server::Admin;
 use proto::{
     admin_server::{Admin, AdminServer},
     calculator_server::{Calculator, CalculatorServer},
+    CalculationRequest, CalculationResponse, GetCountRequest, GetCountResponse,
+    FILE_DESCRIPTOR_SET,
 };
-use tonic::transport::Server;
+use tonic::async_trait;
+use tonic::{metadata::MetadataValue, transport::Server, Request, Response, Status};
 
 mod proto {
     tonic::include_proto!("calculator");
@@ -30,42 +33,42 @@ impl CalculatorService {
     }
 }
 
-#[tonic::async_trait]
+#[async_trait]
 impl Calculator for CalculatorService {
     async fn add(
         &self,
-        request: tonic::Request<proto::CalculationRequest>,
-    ) -> Result<tonic::Response<proto::CalculationResponse>, tonic::Status> {
+        request: Request<CalculationRequest>,
+    ) -> Result<Response<CalculationResponse>, Status> {
         println!("Got a request: {:?}", request);
         self.increment_counter().await;
 
         let input = request.get_ref();
 
-        let response = proto::CalculationResponse {
+        let response = CalculationResponse {
             result: input.a + input.b,
         };
 
-        Ok(tonic::Response::new(response))
+        Ok(Response::new(response))
     }
 
     async fn divide(
         &self,
-        request: tonic::Request<proto::CalculationRequest>,
-    ) -> Result<tonic::Response<proto::CalculationResponse>, tonic::Status> {
+        request: Request<CalculationRequest>,
+    ) -> Result<Response<CalculationResponse>, Status> {
         println!("Got a request: {:?}", request);
         self.increment_counter().await;
 
         let input = request.get_ref();
 
         if input.b == 0 {
-            return Err(tonic::Status::invalid_argument("Cannot divide by zero"));
+            return Err(Status::invalid_argument("Cannot divide by zero"));
         }
 
-        let response = proto::CalculationResponse {
+        let response = CalculationResponse {
             result: input.a / input.b,
         };
 
-        Ok(tonic::Response::new(response))
+        Ok(Response::new(response))
     }
 }
 
@@ -78,15 +81,31 @@ impl AdminService {
         Self { state }
     }
 }
-#[tonic::async_trait]
+#[async_trait]
 impl Admin for AdminService {
     async fn get_request_count(
         &self,
-        _: tonic::Request<proto::GetCountRequest>,
-    ) -> Result<tonic::Response<proto::GetCountResponse>, tonic::Status> {
+        _: Request<GetCountRequest>,
+    ) -> Result<Response<GetCountResponse>, Status> {
         let count = self.state.read().await;
-        let response = proto::GetCountResponse { count: *count };
-        Ok(tonic::Response::new(response))
+        let response = GetCountResponse { count: *count };
+        Ok(Response::new(response))
+    }
+}
+
+fn check_auth(request: Request<()>) -> Result<Request<()>, Status> {
+    let secret: MetadataValue<_> = "Bearer some-secret-token".parse().unwrap();
+
+    let token = request.metadata().get("authorization");
+
+    if let Some(token) = token {
+        if token == secret {
+            Ok(request)
+        } else {
+            Err(Status::unauthenticated("Invalid token"))
+        }
+    } else {
+        Err(Status::unauthenticated("Missing token"))
     }
 }
 
@@ -101,7 +120,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     let calculator = CalculatorService::new(state.clone());
 
     let service = tonic_reflection::server::Builder::configure()
-        .register_encoded_file_descriptor_set(proto::FILE_DESCRIPTOR_SET)
+        .register_encoded_file_descriptor_set(FILE_DESCRIPTOR_SET)
         .build()?;
 
     println!("CalculatorServer listening on {}", addr);
@@ -109,7 +128,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     Server::builder()
         .add_service(service)
         .add_service(CalculatorServer::new(calculator))
-        .add_service(AdminServer::new(admin))
+        .add_service(AdminServer::with_interceptor(admin, check_auth))
         .serve(addr)
         .await?;
 
