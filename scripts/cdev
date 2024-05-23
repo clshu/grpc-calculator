@@ -1,2 +1,2 @@
 #!/bin/zsh
-cargo watch -q -c -w src/  -w build.rs -x "run --bin server"
+cargo watch -q -c -w src/  -w proto/ -w build.rs -x "run --bin server"

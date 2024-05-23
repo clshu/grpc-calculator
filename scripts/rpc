@@ -1,4 +1,4 @@
 #!/bin/zsh
 grpcurl -plaintext \
--d '{"a": 2, "b": 3}' \
-'[::1]:50051' calculator.Calculator.Add
+-d "{\"a\": ${1}, \"b\": ${2}}" \
+'[::1]:50051' calculator.Calculator.${3}
