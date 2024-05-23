@@ -1,4 +1,8 @@
-use proto::calculator_server::{Calculator, CalculatorServer};
+// use proto::admin_server::Admin;
+use proto::{
+    admin_server::{Admin, AdminServer},
+    calculator_server::{Calculator, CalculatorServer},
+};
 use tonic::transport::Server;
 
 mod proto {
@@ -8,8 +12,23 @@ mod proto {
         tonic::include_file_descriptor_set!("calculator_descriptor");
 }
 
+type State = std::sync::Arc<tokio::sync::RwLock<u64>>;
+
 #[derive(Debug, Default)]
-struct CalculatorService {}
+struct CalculatorService {
+    state: State,
+}
+
+impl CalculatorService {
+    fn new(state: State) -> Self {
+        Self { state }
+    }
+    async fn increment_counter(&self) {
+        let mut count = self.state.write().await;
+        *count += 1;
+        println!("Counter: {}", *count);
+    }
+}
 
 #[tonic::async_trait]
 impl Calculator for CalculatorService {
@@ -18,6 +37,7 @@ impl Calculator for CalculatorService {
         request: tonic::Request<proto::CalculationRequest>,
     ) -> Result<tonic::Response<proto::CalculationResponse>, tonic::Status> {
         println!("Got a request: {:?}", request);
+        self.increment_counter().await;
 
         let input = request.get_ref();
 
@@ -33,6 +53,7 @@ impl Calculator for CalculatorService {
         request: tonic::Request<proto::CalculationRequest>,
     ) -> Result<tonic::Response<proto::CalculationResponse>, tonic::Status> {
         println!("Got a request: {:?}", request);
+        self.increment_counter().await;
 
         let input = request.get_ref();
 
@@ -48,11 +69,36 @@ impl Calculator for CalculatorService {
     }
 }
 
+struct AdminService {
+    state: State,
+}
+
+impl AdminService {
+    fn new(state: State) -> Self {
+        Self { state }
+    }
+}
+#[tonic::async_trait]
+impl Admin for AdminService {
+    async fn get_request_count(
+        &self,
+        _: tonic::Request<proto::GetCountRequest>,
+    ) -> Result<tonic::Response<proto::GetCountResponse>, tonic::Status> {
+        let count = self.state.read().await;
+        let response = proto::GetCountResponse { count: *count };
+        Ok(tonic::Response::new(response))
+    }
+}
+
 #[tokio::main]
 async fn main() -> Result<(), Box<dyn std::error::Error>> {
     let addr = "[::1]:50051".parse().unwrap();
 
-    let calculator = CalculatorService::default();
+    let state = State::default();
+
+    let admin = AdminService::new(state.clone());
+
+    let calculator = CalculatorService::new(state.clone());
 
     let service = tonic_reflection::server::Builder::configure()
         .register_encoded_file_descriptor_set(proto::FILE_DESCRIPTOR_SET)
@@ -63,6 +109,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     Server::builder()
         .add_service(service)
         .add_service(CalculatorServer::new(calculator))
+        .add_service(AdminServer::new(admin))
         .serve(addr)
         .await?;
 
