@@ -1,0 +1,2 @@
+#!/bin/zsh
+grpcurl -plaintext '[::1]:50051' list

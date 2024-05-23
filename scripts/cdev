@@ -1,2 +1,2 @@
 #!/bin/zsh
-cargo watch -q -c -w src/  -x run
+cargo watch -q -c -w src/  -w build.rc -x run

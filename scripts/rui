@@ -1,0 +1,2 @@
+#!/bin/zsh
+grpcui -plaintext '[::1]:50051'
